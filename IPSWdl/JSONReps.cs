@@ -6,7 +6,7 @@ namespace IPSWdl
 {
     public static class JsonReps
     {
-        public struct device
+        public struct Device
         {
             public string name { get; set; }
             public string identifier { get; set; }
@@ -16,7 +16,7 @@ namespace IPSWdl
 
         }
 
-        public struct firmware
+        public struct Firmware
         {
             public string identifier { get; set; }
             public string version { get; set; }
@@ -40,12 +40,17 @@ namespace IPSWdl
             public int cpid { get; set; }
             public int bdid { get; set; }
 
-            public List<firmware> firmwares { get; set; } //Dates of firmwares are ordered. index 0 is always the newest
-
+            public List<Firmware> firmwares { get; set; } //Dates of firmwares are ordered. index 0 is always the newest
 
         }
 
-
+        /// <summary>
+        /// only for tricking the utf8json genorator into giving me the type i need lol
+        /// </summary>
+        public struct jank
+        {
+            public List<Device> devices { get; set; }
+        }
 
 
 

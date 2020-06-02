@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Mono.Options;
+using Utf8Json;
 
 namespace IPSWdl
 {
@@ -17,6 +17,12 @@ namespace IPSWdl
 
         static async Task Main(string[] args)
         {
+            //Wire up UTF8Json AOT generated class 
+            Utf8Json.Resolvers.CompositeResolver.RegisterAndSetAsDefault(
+                Utf8Json.Resolvers.GeneratedResolver.Instance,
+                Utf8Json.Resolvers.BuiltinResolver.Instance
+            );
+            
             //CLI args
             string pathToStoreFiles = null;
             string searchTerm = null;
@@ -90,13 +96,13 @@ namespace IPSWdl
         }
 
 
-        public static async Task<List<JsonReps.device>> GetAllDevices()
+        public static async Task<List<JsonReps.Device>> GetAllDevices()
         {
             var res = await Client.GetAsync("https://api.ipsw.me/v4/devices");
-            return JsonSerializer.Deserialize<List<JsonReps.device>>(await res.Content.ReadAsStringAsync());
+            return (List<JsonReps.Device>) JsonSerializer.Deserialize<List<JsonReps.Device>>(await res.Content.ReadAsStringAsync());
         }
 
-        public static async Task<JsonReps.FirmwareListing> GetFirmwaresForDevice(JsonReps.device device)
+        public static async Task<JsonReps.FirmwareListing> GetFirmwaresForDevice(JsonReps.Device device)
         {
             var res = await Client.GetAsync($"https://api.ipsw.me/v4/device/{device.identifier}?type=ipsw");
             var firmware = JsonSerializer.Deserialize<JsonReps.FirmwareListing>(await res.Content.ReadAsStringAsync());
