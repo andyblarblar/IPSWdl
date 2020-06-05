@@ -106,7 +106,7 @@ namespace IPSWdl
         public static async Task<List<JsonReps.Device>> GetAllDevices()
         {
             var res = await Client.GetAsync("https://api.ipsw.me/v4/devices");
-            return (List<JsonReps.Device>) JsonSerializer.Deserialize<List<JsonReps.Device>>(await res.Content.ReadAsStringAsync());
+            return JsonSerializer.Deserialize<List<JsonReps.Device>>(await res.Content.ReadAsStringAsync());
         }
 
         public static async Task<JsonReps.FirmwareListing> GetFirmwaresForDevice(JsonReps.Device device)
@@ -123,6 +123,17 @@ namespace IPSWdl
 
         public static async Task DownloadMostRecentFirmware(JsonReps.FirmwareListing firmwareListing, string basePathToFolder)
         {
+            //leave if no firmware is found
+            if (firmwareListing.firmwares.Count == 0)
+            {
+                ++TotalDone;
+                Console.Write($"{firmwareListing.name} has no firmware for download");
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"                      {(TotalDone / TotalCount) * 100}% complete");
+                Console.ForegroundColor = ConsoleColor.Gray;
+                return;
+            }
+
             //firmware[0] is always the newest
             var res = await Client.GetAsync($"https://api.ipsw.me/v4/ipsw/download/{firmwareListing.firmwares[0].identifier}/{firmwareListing.firmwares[0].buildid}");
             var urlToDownload = res.Headers.Location;
