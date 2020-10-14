@@ -12,9 +12,9 @@ namespace IPSWdl
 {
     class Program
     {
-        private static readonly HttpClient Client = new HttpClient();
-        private static float TotalCount;
-        private static float TotalDone;
+        private static readonly HttpClient Client = new HttpClient(new HttpClientHandler{ AllowAutoRedirect = false});
+        private static float _totalCount;
+        private static float _totalDone;
 
         static async Task Main(string[] args)
         {
@@ -72,8 +72,8 @@ namespace IPSWdl
             //Actual program
             Console.WriteLine("Getting devices...");
             var devices = await GetAllDevices();
-            TotalCount = devices.Count;
-            Console.WriteLine($"Got {TotalCount} devices!");
+            _totalCount = devices.Count;
+            Console.WriteLine($"Got {_totalCount} devices!");
 
             var startTime = DateTime.Now;
             Console.WriteLine("Starting Downloads... This may take a very long time.");
@@ -89,7 +89,7 @@ namespace IPSWdl
             }
             else //only download based on search term if passed
             {
-                TotalCount = devices.Count(d => d.name.Contains(searchTerm));
+                _totalCount = devices.Count(d => d.name.Contains(searchTerm));
                 foreach (var device in devices.Where(d => d.name.Contains(searchTerm)))
                 {
                     var firmware = await GetFirmwaresForDevice(device);
@@ -126,27 +126,44 @@ namespace IPSWdl
             //leave if no firmware is found
             if (firmwareListing.firmwares.Count == 0)
             {
-                ++TotalDone;
+                ++_totalDone;
                 Console.Write($"{firmwareListing.name} has no firmware for download");
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"                      {(TotalDone / TotalCount) * 100}% complete");
+                Console.WriteLine($"                      {(_totalDone / _totalCount) * 100}% complete");
                 Console.ForegroundColor = ConsoleColor.Gray;
                 return;
             }
 
-            //firmware[0] is always the newest
+            //firmware[0] is always the newest firmware available 
             var res = await Client.GetAsync($"https://api.ipsw.me/v4/ipsw/download/{firmwareListing.firmwares[0].identifier}/{firmwareListing.firmwares[0].buildid}");
             var urlToDownload = res.Headers.Location;
-
+            
             Console.WriteLine($"Beginning to download {firmwareListing.name} {firmwareListing.firmwares[0].version}");
 
             //If file has already been downloaded, skip
             if (File.Exists(Path.Join(basePathToFolder, $@"/IPSW/{firmwareListing.name}/{firmwareListing.firmwares[0].version}.ipsw")))
             {
-                ++TotalDone;
+                ++_totalDone;
                 Console.Write($"{firmwareListing.name} {firmwareListing.firmwares[0].version} already exists. Skipping download");
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"                      {(TotalDone / TotalCount) * 100}% complete");
+                Console.WriteLine($"                      {(_totalDone / _totalCount) * 100}% complete");
+                Console.ForegroundColor = ConsoleColor.White;
+                return;
+            }
+
+            Stream dlStream = null;
+            //If apples api errors, skip. This likely means the IPSW is no longer provided.
+            try
+            {
+               dlStream = await Client.GetStreamAsync(urlToDownload);
+            }
+            catch (HttpRequestException e)
+            {
+                Console.WriteLine(e);
+                ++_totalDone;
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Write($"{firmwareListing.name} {firmwareListing.firmwares[0].version} erred out on apples side. This likely means this IPSW is deprecated.");
+                Console.WriteLine($"                      {(_totalDone / _totalCount) * 100}% complete");
                 Console.ForegroundColor = ConsoleColor.White;
                 return;
             }
@@ -154,12 +171,11 @@ namespace IPSWdl
             //Create file
             Directory.CreateDirectory(Path.Join(basePathToFolder, $@"/IPSW/{firmwareListing.name}/"));
             await using var fileStream = File.Create(Path.Join(basePathToFolder, $@"/IPSW/{firmwareListing.name}/{firmwareListing.firmwares[0].version}.ipsw"));
-            await using var dlStream = await Client.GetStreamAsync(urlToDownload);
 
             using var cts = new CancellationTokenSource();
 
             //Delete currently downloading files if program is cancelled
-            void DeleteCorruptFile(object sender, ConsoleCancelEventArgs args)
+            void DeleteCorruptFileCallback(object sender, ConsoleCancelEventArgs args)
             {
                 cts.Cancel();
                 fileStream.Dispose();
@@ -180,11 +196,11 @@ namespace IPSWdl
 
             }
 
-            Console.CancelKeyPress += DeleteCorruptFile;
+            Console.CancelKeyPress += DeleteCorruptFileCallback;
 
             //download the file
             try
-            {
+            { 
                 await dlStream.CopyToAsync(fileStream, cts.Token);
             }
             catch (TaskCanceledException)
@@ -192,12 +208,13 @@ namespace IPSWdl
                 //ignore, handled by the delegate above.
             }
 
-            Console.CancelKeyPress -= DeleteCorruptFile;
+            Console.CancelKeyPress -= DeleteCorruptFileCallback;
+            await dlStream.DisposeAsync();
 
-            ++TotalDone;
+            ++_totalDone;
             Console.Write($"Finished downloading {firmwareListing.name} {firmwareListing.firmwares[0].version}");
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"                      {(TotalDone/TotalCount) * 100}% complete");
+            Console.WriteLine($"                      {(_totalDone/_totalCount) * 100}% complete");
             Console.ForegroundColor = ConsoleColor.Gray;
         }
 
