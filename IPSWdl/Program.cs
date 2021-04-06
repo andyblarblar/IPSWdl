@@ -29,6 +29,7 @@ namespace IPSWdl
             string searchTerm = null;
             var showHelp = false;
             var downloadAll = false;
+            var deleteOldFirmwares = false;
 
             var p = new OptionSet() {
                 "Usage: ipswdl [OPTIONS]",
@@ -38,6 +39,8 @@ namespace IPSWdl
                 "Options:",
                 { "p|path=", "Specifies the {PATH} where files will be downloaded too. If not specified, the CWD is used.",
                     p => pathToStoreFiles = p },
+                { "d|delete", "Keep only most current firmware.",
+                    d => deleteOldFirmwares = d != null },
                 { "s|search=",
                     "Only downloads for devices matching the {TERM}",
                     s => searchTerm = s},
@@ -84,7 +87,7 @@ namespace IPSWdl
                 foreach (var device in devices)
                 {
                     var firmware = await GetFirmwaresForDevice(device);
-                    await DownloadMostRecentFirmware(firmware, pathToStoreFiles);
+                    await DownloadMostRecentFirmware(firmware, pathToStoreFiles, deleteOldFirmwares);
                 }
             }
             else //only download based on search term if passed
@@ -93,7 +96,7 @@ namespace IPSWdl
                 foreach (var device in devices.Where(d => d.name.Contains(searchTerm)))
                 {
                     var firmware = await GetFirmwaresForDevice(device);
-                    await DownloadMostRecentFirmware(firmware, pathToStoreFiles);
+                    await DownloadMostRecentFirmware(firmware, pathToStoreFiles, deleteOldFirmwares);
                 }
             }
 
@@ -121,7 +124,7 @@ namespace IPSWdl
             return firmware;
         }
 
-        public static async Task DownloadMostRecentFirmware(JsonReps.FirmwareListing firmwareListing, string basePathToFolder)
+        public static async Task DownloadMostRecentFirmware(JsonReps.FirmwareListing firmwareListing, string basePathToFolder, bool deleteOldFiles)
         {
             //leave if no firmware is found
             if (firmwareListing.firmwares.Count == 0)
@@ -151,15 +154,30 @@ namespace IPSWdl
                 return;
             }
 
+            //If set to delete all old firmware and there are existing files, delete all
+            if(deleteOldFiles &&
+                Directory.Exists(Path.Join(basePathToFolder, $@"/IPSW/{firmwareListing.name}/")) &&
+                Directory.GetFiles(Path.Join(basePathToFolder, $@"/IPSW/{firmwareListing.name}/")).Length != 0)
+            {
+                Console.WriteLine($"{firmwareListing.name} has existing files. Deleting...");
+
+                //Deletes all files in directory
+                foreach(var file in Directory.GetFiles(Path.Join(basePathToFolder, $@"/IPSW/{firmwareListing.name}/")))
+                {
+                    File.Delete(file);
+                }
+
+                Console.WriteLine("Finished deleting files. Resuming download...");
+            }
+
             Stream dlStream = null;
             //If apples api errors, skip. This likely means the IPSW is no longer provided.
             try
             {
                dlStream = await Client.GetStreamAsync(urlToDownload);
             }
-            catch (HttpRequestException e)
-            {
-                Console.WriteLine(e);
+            catch (HttpRequestException)
+            { 
                 ++_totalDone;
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.Write($"{firmwareListing.name} {firmwareListing.firmwares[0].version} erred out on apples side. This likely means this IPSW is deprecated.");
